@@ -42,7 +42,7 @@ def compute_z(beta, X, y,seed=None):
     # Simulate a gaussian for each i
     gaussian = rnd.multivariate_normal(mean=xb[:,0],cov=np.identity(n))
     # Troncate the observations according to y value
-    z=np.where(y==np.zeros(n),np.maximum(np.zeros(n),gaussian), np.minimum(np.zeros(n),gaussian))
+    z=np.where(y==np.zeros(n),np.minimum(np.zeros(n),gaussian), np.maximum(np.zeros(n),gaussian)) #ordre max/min ?
     z = z.reshape(-1,1)
     return z
 
@@ -88,7 +88,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     seed = hypers['seed']
 
     rnd = np.random.RandomState(seed)
-    beta = compute_beta_prior(mean=a,cov=A,seed=seed)
+    beta = compute_beta_prior(mean=a,cov=np.linalg.inv(A),seed=seed) # A ou A^-1 ?
     z = compute_z(beta,X,y,seed)
     B = compute_B(A,X)
 
@@ -104,7 +104,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     while remaining_iter>0: 
         beta_z = compute_beta_z(z,X,A,a) # beta_z are updated
         beta = rnd.multivariate_normal(mean=beta_z, cov=B) # beta updated
-        z = compute_z(beta,X,y,seed)
+        z = compute_z(beta,X,y,seed) # z updated
         
         if remaining_iter%SAMPLE_SPACING == 0 and BURN_IN <=0: # If the BURN_IN period is over
             # and that we need to sample this iteration
@@ -145,13 +145,11 @@ def compute_marg_likelihood(X, y, iters, init, hypers):
     # Second term
     prior = multivariate_normal.logpdf(x=beta_star, mean=a, cov=A)
     multivariate_normal.pdf(x=beta_star, mean=a, cov=A)
-     
     # Third term
     posterior = np.log(np.array([multivariate_normal.pdf(x=beta_star, mean=beta_z[i], cov=B) for i in range(iters)]).mean()) 
     # pdf renvoie un gros nombre...: Compréhension de liste peut être amélioré
     # Marginal likelihood
     log_marg_likelihood = log_like + prior - posterior
-    
     
     return log_marg_likelihood
 

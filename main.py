@@ -7,7 +7,7 @@ Created on Sun Dec 23 16:09:55 2018
 
 import os
 
-os.chdir("C:/Users/robin/Documents/Documents_importants/scolarité/ENSAE3A_DataScience/Statistique_bayesienne/Articles_candidats/code")
+os.chdir("C:/Users/quent/Desktop/3A_ENSAE/Stats Bayesiennes/Projet/bayesian-project-master")
 
 
 import pandas as pd
@@ -25,11 +25,13 @@ y = X.iloc[:,0].values
 X = X.iloc[:,1:].values
 
 ## Specifying the length of the chain and the prior parameters to send to the Gibbs Sampler
-a = np.full(X.shape[1], 0.75)
-A = np.linalg.inv(5*np.identity(X.shape[1]))
-B = np.linalg.inv(np.identity(X.shape[1]))
-
 d = X.shape[1]
+
+a = np.full(d, 0.75)
+A = np.linalg.inv(5*np.identity(d))
+B = np.linalg.inv(np.identity(d)) 
+
+
 
 iters = 5000
 init = {"a": a,
@@ -42,4 +44,4 @@ hypers = {"SAMPLE_SPACING": 1,
 
 ## Run the Gibbs Sampler (for all the covariates) and compute the marginal likelihood
 beta, beta_z, B = GibbsSampler(X, y, iters, init, hypers)
-compute_marg_likelihood(X, y, iters, init, hypers)
+log_marg = compute_marg_likelihood(X, y, iters, init, hypers)

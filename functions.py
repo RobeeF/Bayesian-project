@@ -10,12 +10,8 @@ import numpy.linalg
 import os 
 import copy
 from scipy.stats import multivariate_normal
-import matplotlib.plotly as plt
 import pandas as pd
 import statsmodels.discrete.discrete_model as sm
-
-
-os.chdir('C:/Users/robin/Documents/Documents_importants/scolarité/ENSAE3A_DataScience/Statistique_bayesienne/Articles_candidats/code')
 
 
 def compute_beta_prior(mean, cov, seed=None):
@@ -108,6 +104,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     while remaining_iter>0: 
         beta_z = compute_beta_z(z,X,A,a) # beta_z are updated
         beta = rnd.multivariate_normal(mean=beta_z, cov=B) # beta updated
+        z = compute_z(beta,X,y,seed)
         
         if remaining_iter%SAMPLE_SPACING == 0 and BURN_IN <=0: # If the BURN_IN period is over
             # and that we need to sample this iteration
@@ -150,12 +147,13 @@ def compute_marg_likelihood(X, y, iters, init, hypers):
     multivariate_normal.pdf(x=beta_star, mean=a, cov=A)
      
     # Third term
-    posterior = np.log(np.array([multivariate_normal.logpdf(x=beta_star, mean=beta_z[i], cov=B) for i in range(iters)]).mean()) 
+    posterior = np.log(np.array([multivariate_normal.pdf(x=beta_star, mean=beta_z[i], cov=B) for i in range(iters)]).mean()) 
     # pdf renvoie un gros nombre...: Compréhension de liste peut être amélioré
     # Marginal likelihood
-    marg_likelihood = np.exp(log_like + prior - posterior)
+    log_marg_likelihood = log_like + prior - posterior
     
-    return marg_likelihood
+    
+    return log_marg_likelihood
 
 
 

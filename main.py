@@ -31,7 +31,7 @@ hypers = {"SAMPLE_SPACING": 1,
 iters = 5000
 
 
-## Models of the article
+## Models of the paper
 MODELS = {"M1" : [],
           "M2" : [0],
           "M3" : [1],
@@ -64,5 +64,5 @@ for i in MODELS :
     init = {"a": a,
             "A": A}
 
-    log_marg = compute_marg_likelihood(X_model, y, iters, init, hypers)
-    RESULTS[i] = log_marg
+    log_marg,NSE = compute_marg_likelihood_and_NSE(X_model, y, iters, init, hypers)
+    RESULTS[i] = [log_marg,NSE]

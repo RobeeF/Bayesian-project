@@ -67,6 +67,21 @@ def compute_B(A,X): # Cheucheu peut-être
     returns: (ndarray) Cov-Var matrix of the posterior 
     '''
     return np.linalg.inv(A + np.dot(X.T,X))
+
+def compute_Omega(s,h):
+    h_hat = h.mean()
+    G = np.shape(h)[0]
+    h = h[s:]
+    h = h-h_hat
+    return (1/G)*np.sum(h*h)
+
+def compute_var_h(h,q=10):
+    G = np.shape(h)[0]
+    temp = np.array([(1-s/(q+1))*2*compute_Omega(s,h) for s in range(1,q+1)])
+    return (1/G)*(compute_Omega(0,h)+np.sum(temp))
+    
+    
+    
   
 def GibbsSampler(X, y, iters, init, hypers, seed=None): 
     ''' Gibbs sampler applied to the nodal set from  Chib (1995).
@@ -120,7 +135,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     else:
         return sample_beta,sample_beta_z, B 
     
-def compute_marg_likelihood(X, y, iters, init, hypers):
+def compute_marg_likelihood_and_NSE(X, y, iters, init, hypers):
     ''' Compute the marginal likelihood from the Gibbs Sampler output according to Chib (1995)
     X: (ndarray) exogeneous variables
     y : (array-like) endogeneous variables
@@ -146,12 +161,16 @@ def compute_marg_likelihood(X, y, iters, init, hypers):
     prior = multivariate_normal.logpdf(x=beta_star, mean=a, cov=A)
     multivariate_normal.pdf(x=beta_star, mean=a, cov=A)
     # Third term
-    posterior = np.log(np.array([multivariate_normal.pdf(x=beta_star, mean=beta_z[i], cov=B) for i in range(iters)]).mean()) 
+    conditional_densities = np.array([multivariate_normal.pdf(x=beta_star, mean=beta_z[i], cov=B) for i in range(iters)])
+    posterior = np.log(conditional_densities.mean()) 
     # pdf renvoie un gros nombre...: Compréhension de liste peut être amélioré
     # Marginal likelihood
     log_marg_likelihood = log_like + prior - posterior
     
-    return log_marg_likelihood
+    #Numerical Standard Error
+    NSE = np.sqrt(compute_var_h(conditional_densities,q=10)/(conditional_densities.mean()**2))
+    
+    return log_marg_likelihood, NSE
 
 
 

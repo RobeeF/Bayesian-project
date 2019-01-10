@@ -31,7 +31,7 @@ hypers = {"SAMPLE_SPACING": 1,
 iters = 5000
 
 
-## Models of the paper
+## Paper's Models (corresponding columns to keep)
 MODELS = {"M1" : [],
           "M2" : [0],
           "M3" : [1],
@@ -47,7 +47,8 @@ MODELS = {"M1" : [],
 X[:,1]=np.log(X[:,1])
 
 
-## Run the Gibbs Sampler (for all the models in the article) and compute the marginal log_likelihood
+## Run the Gibbs Sampler (for all the models) 
+## and compute the marginal log_likelihood and the numerical standard error
 RESULTS = dict()
 
 for i in MODELS :

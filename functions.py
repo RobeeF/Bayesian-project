@@ -42,7 +42,7 @@ def compute_z(beta, X, y,seed=None):
     # Simulate a gaussian for each i
     gaussian = rnd.multivariate_normal(mean=xb[:,0],cov=np.identity(n))
     # Troncate the observations according to y value
-    z=np.where(y==np.zeros(n),np.minimum(np.zeros(n),gaussian), np.maximum(np.zeros(n),gaussian)) #ordre max/min ?
+    z=np.where(y==np.zeros(n),np.minimum(np.zeros(n),gaussian), np.maximum(np.zeros(n),gaussian)) #MODIF : changement ordre min/max
     z = z.reshape(-1,1)
     return z
 
@@ -69,6 +69,14 @@ def compute_B(A,X): # Cheucheu peut-être
     return np.linalg.inv(A + np.dot(X.T,X))
 
 def compute_Omega(s,h):
+    ''' Compute Omega_s (from part 3 of the article)
+    Warning : This computation works only in the 2.1.1 case
+    
+    s: (integer) parameter of Omega
+    h: (array-like) Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
+    
+    returns : (float because we are in case 2.1.1)  Coefficient Omega used to compute NSE
+    '''
     h_hat = h.mean()
     G = np.shape(h)[0]
     h = h[s:]
@@ -76,6 +84,12 @@ def compute_Omega(s,h):
     return (1/G)*np.sum(h*h)
 
 def compute_var_h(h,q=10):
+    ''' Compute var(h) as in last formule of p.4 right column (for case 2.1.1)
+    h: (array-like) Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
+    q: (integer) parameter q=10 by default (as suggered in the article)
+    
+    returns (float because we are in case 2.1.1) var(h_hat)
+    '''
     G = np.shape(h)[0]
     temp = np.array([(1-s/(q+1))*2*compute_Omega(s,h) for s in range(1,q+1)])
     return (1/G)*(compute_Omega(0,h)+np.sum(temp))
@@ -103,7 +117,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     seed = hypers['seed']
 
     rnd = np.random.RandomState(seed)
-    beta = compute_beta_prior(mean=a,cov=np.linalg.inv(A),seed=seed) # A ou A^-1 ?
+    beta = compute_beta_prior(mean=a,cov=np.linalg.inv(A),seed=seed) # MODIF : np.linalg.inv(A) in place of A
     z = compute_z(beta,X,y,seed)
     B = compute_B(A,X)
 
@@ -119,7 +133,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     while remaining_iter>0: 
         beta_z = compute_beta_z(z,X,A,a) # beta_z are updated
         beta = rnd.multivariate_normal(mean=beta_z, cov=B) # beta updated
-        z = compute_z(beta,X,y,seed) # z updated
+        z = compute_z(beta,X,y,seed) # MODIF : adds z updated
         
         if remaining_iter%SAMPLE_SPACING == 0 and BURN_IN <=0: # If the BURN_IN period is over
             # and that we need to sample this iteration

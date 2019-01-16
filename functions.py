@@ -10,12 +10,8 @@ import numpy.linalg
 import os 
 import copy
 from scipy.stats import multivariate_normal
-import matplotlib.plotly as plt
 import pandas as pd
 import statsmodels.discrete.discrete_model as sm
-
-
-os.chdir('C:/Users/robin/Documents/Documents_importants/scolarité/ENSAE3A_DataScience/Statistique_bayesienne/Articles_candidats/code')
 
 
 def compute_beta_prior(mean, cov, seed=None):
@@ -46,7 +42,7 @@ def compute_z(beta, X, y,seed=None):
     # Simulate a gaussian for each i
     gaussian = rnd.multivariate_normal(mean=xb[:,0],cov=np.identity(n))
     # Troncate the observations according to y value
-    z=np.where(y==np.zeros(n),np.maximum(np.zeros(n),gaussian), np.minimum(np.zeros(n),gaussian))
+    z=np.where(y==np.zeros(n),np.minimum(np.zeros(n),gaussian), np.maximum(np.zeros(n),gaussian)) #MODIF : changement ordre min/max
     z = z.reshape(-1,1)
     return z
 
@@ -71,6 +67,35 @@ def compute_B(A,X): # Cheucheu peut-être
     returns: (ndarray) Cov-Var matrix of the posterior 
     '''
     return np.linalg.inv(A + np.dot(X.T,X))
+
+def compute_Omega(s,h):
+    ''' Compute Omega_s (from part 3 of the article)
+    Warning : This computation works only in the 2.1.1 case
+    
+    s: (integer) parameter of Omega
+    h: (array-like) Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
+    
+    returns : (float because we are in case 2.1.1)  Coefficient Omega used to compute NSE
+    '''
+    h_hat = h.mean()
+    G = np.shape(h)[0]
+    h = h[s:]
+    h = h-h_hat
+    return (1/G)*np.sum(h*h)
+
+def compute_var_h(h,q=10):
+    ''' Compute var(h) as in last formule of p.4 right column (for case 2.1.1)
+    h: (array-like) Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
+    q: (integer) parameter q=10 by default (as suggered in the article)
+    
+    returns (float because we are in case 2.1.1) var(h_hat)
+    '''
+    G = np.shape(h)[0]
+    temp = np.array([(1-s/(q+1))*2*compute_Omega(s,h) for s in range(1,q+1)])
+    return (1/G)*(compute_Omega(0,h)+np.sum(temp))
+    
+    
+    
   
 def GibbsSampler(X, y, iters, init, hypers, seed=None): 
     ''' Gibbs sampler applied to the nodal set from  Chib (1995).
@@ -92,7 +117,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     seed = hypers['seed']
 
     rnd = np.random.RandomState(seed)
-    beta = compute_beta_prior(mean=a,cov=A,seed=seed)
+    beta = compute_beta_prior(mean=a,cov=np.linalg.inv(A),seed=seed) # MODIF : np.linalg.inv(A) in place of A
     z = compute_z(beta,X,y,seed)
     B = compute_B(A,X)
 
@@ -108,6 +133,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     while remaining_iter>0: 
         beta_z = compute_beta_z(z,X,A,a) # beta_z are updated
         beta = rnd.multivariate_normal(mean=beta_z, cov=B) # beta updated
+        z = compute_z(beta,X,y,seed) # MODIF : adds z updated
         
         if remaining_iter%SAMPLE_SPACING == 0 and BURN_IN <=0: # If the BURN_IN period is over
             # and that we need to sample this iteration
@@ -123,7 +149,7 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     else:
         return sample_beta,sample_beta_z, B 
     
-def compute_marg_likelihood(X, y, iters, init, hypers):
+def compute_marg_likelihood_and_NSE(X, y, iters, init, hypers):
     ''' Compute the marginal likelihood from the Gibbs Sampler output according to Chib (1995)
     X: (ndarray) exogeneous variables
     y : (array-like) endogeneous variables
@@ -148,14 +174,17 @@ def compute_marg_likelihood(X, y, iters, init, hypers):
     # Second term
     prior = multivariate_normal.logpdf(x=beta_star, mean=a, cov=A)
     multivariate_normal.pdf(x=beta_star, mean=a, cov=A)
-     
     # Third term
-    posterior = np.log(np.array([multivariate_normal.logpdf(x=beta_star, mean=beta_z[i], cov=B) for i in range(iters)]).mean()) 
+    conditional_densities = np.array([multivariate_normal.pdf(x=beta_star, mean=beta_z[i], cov=B) for i in range(iters)])
+    posterior = np.log(conditional_densities.mean()) 
     # pdf renvoie un gros nombre...: Compréhension de liste peut être amélioré
     # Marginal likelihood
-    marg_likelihood = np.exp(log_like + prior - posterior)
+    log_marg_likelihood = log_like + prior - posterior
     
-    return marg_likelihood
+    #Numerical Standard Error
+    NSE = np.sqrt(compute_var_h(conditional_densities,q=10)/(conditional_densities.mean()**2))
+    
+    return log_marg_likelihood, NSE
 
 
 

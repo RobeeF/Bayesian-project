@@ -9,7 +9,7 @@ import numpy as np
 import numpy.linalg
 import os 
 import copy
-from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal, invgamma, dirichlet, multinomial, norm
 import pandas as pd
 import statsmodels.discrete.discrete_model as sm
 
@@ -187,5 +187,115 @@ def compute_marg_likelihood_and_NSE(X, y, iters, init, hypers):
     return log_marg_likelihood, NSE
 
 
+#======================================================================================
+# Galaxies functions
+#======================================================================================
 
 
+def compute_prior_galaxies(mu_params, sigma_params,q_params, d, seed=None):
+    ''' Generate draws from the multivariate normal prior 
+    mean: (array-like) Mean of the multivariate prior
+    cov: (ndarray) Covariance of the multivariate prior
+    
+    returns: (array-like) the draws from the prior
+    '''
+    rnd = np.random.RandomState(seed)
+    mu =rnd.normal(loc=mu_params[0], scale=np.sqrt(mu_params[1]), size=d)
+    sigma_square = invgamma.rvs(a=sigma_params[0]/2,scale=sigma_params[1]/2,size=d)
+    q = dirichlet.rvs(alpha=q_params, random_state=seed)[0]
+    
+    return mu, sigma_square, q
+
+def compute_z_galaxies(q):
+    q[q < 0] = 0 # Quick fix: sometimes the number returned by the gaussian is negative and then the code crashes
+    p = q/q.sum()
+    draws = multinomial.rvs(n=1, p=p, size=82) # 82 hardcoded
+    z = np.where(draws==1)[1]
+    return z, np.stack(draws)
+
+#q = np.array([1]*3)
+#compute_z_galaxies(q)[0]
+
+def compute_B_galaxies(A, sigma_square, n,d):
+    B = np.reciprocal(np.full(d,A)+np.power(sigma_square,[-1]*d)*n)
+    return B
+
+
+def compute_n(z,d): # Très sale
+    count = numpy.unique(z, return_counts=True)
+    if len(count[0])<d: # Sometimes some groups are empty need to fill with zeros.. 
+        n = []
+        for i in range(0,d):
+            if i in count[0]:
+                n.append(count[1][numpy.where(count[0]==i)][0])
+            else:
+                n.append(0)
+        return n
+    else:
+        return count[1]
+
+z = np.array([4,1,1,1,2])
+compute_n(z,5)
+
+
+def GibbsSampler2(y, iters, init, hypers, seed=None): 
+    ''' Gibbs sampler applied to the nodal set from  Chib (1995).
+    X: (ndarray) exogeneous variables
+    y : (array-like) endogeneous variables
+    iters: (int) length of the MCMC
+    init: (array-like) initialisation parameters
+    hypers: (array-like) hyper-parameters
+    
+    returns: (tuple) the simulated beta chain (array-like), the b_z chain (array-like) as a by product and B the covariance matrix of the posterior (ndarray)
+    '''
+    
+    # Initialisation
+    A,d =  init['A'], init['d']
+
+    mu_params, sigma_square_params, q_params = init['mu_params'], init['sigma_square_params'], init['q_params']
+    
+    # Hyper-parameters
+    BURN_IN = hypers['BURN_IN']
+    SAMPLE_SPACING = hypers['SAMPLE_SPACING']
+    seed = hypers['seed']
+
+    rnd = np.random.RandomState(seed)
+    mu, sigma_square, q = compute_prior_galaxies(mu_params, sigma_square_params,q_params,d)
+    z, i = compute_z_galaxies(q) # Split in to functions ?
+    delta = np.diag(np.dot((y*i - np.multiply(i,mu)).T,(y*i - np.multiply(i,mu))))
+
+    # We wait untill BURN_IN updates before sampling 
+    # Then we sample every SAMPLE_SPACING iterations and we sample d times more to evaluate by block (G*d)
+    # As a result p*SAMPLE_SPACING + BURN_IN iterations are needed 
+    remaining_iter = iters*SAMPLE_SPACING*d + BURN_IN 
+
+    sample_mu = [] # Will contain the sampled betas
+    sample_sigma_square = [] # Will contain the sampled beta_Zs 
+    sample_q = [] # Will contain the sampled beta_Zs 
+
+    while remaining_iter>0: 
+        n = compute_n(z,d)
+        B = compute_B_galaxies(A, sigma_square, n,d)
+        mu_hat = B*(A*mu_params[0]+np.linalg.multi_dot([np.power(sigma_square,[-1]*d),i.T,y])) # change 1 with i
+        
+        mu = rnd.multivariate_normal(mean=mu_hat, cov=np.diag(B)) # Why is there a product
+        sigma_square = invgamma.rvs(a=(sigma_square_params[0]+n)/2,scale=(sigma_square_params[1]+delta)/2)
+        q = dirichlet.rvs(alpha=q_params+n, random_state=seed)[0]
+
+        z,i = compute_z_galaxies(q*rnd.multivariate_normal(mean=mu, cov=np.diag(sigma_square))) # Pas sur pour la multiplication par la normale
+        delta = np.diag(np.dot((y*i - np.multiply(i,mu)).T,(y*i - np.multiply(i,mu))))
+
+        if remaining_iter%SAMPLE_SPACING == 0 and BURN_IN <=0: # If the BURN_IN period is over
+            # and that we need to sample this iteration
+            sample_mu.append(copy.deepcopy(mu))
+            sample_sigma_square.append(copy.deepcopy(sigma_square))
+            sample_q.append(copy.deepcopy(q))
+                               
+        BURN_IN-=1
+        remaining_iter-=1
+        
+    if iters == 1: # If there is only one observation
+        # return the observation, not a list of one element
+        return sample_mu[0], sample_sigma_square[0], sample_q[0] # z aussi non ?
+    else:
+        return np.stack(sample_mu), np.stack(sample_sigma_square), np.stack(sample_q)

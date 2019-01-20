@@ -77,12 +77,13 @@ for i in MODELS :
 # Galaxies data 
 #======================================================================================
 from functions import *
+from scipy.stats import multivariate_normal, norm, invgamma, dirichlet
 
 y = pd.read_csv('galaxies.csv')
-y = np.array(y).reshape(-1,1)# Pas très propre mais efficace
+y = np.array(y).reshape(-1,1)
 y = y/1000 # Velocity/1000 as in the paper 
 
-d = 5
+d = 3
 init = {'d':d,'mu_params': np.array([20,100]), 'sigma_square_params': np.array([6,40]),
         'q_params': np.full(d,1), 'A':100}
 
@@ -91,10 +92,15 @@ hypers = {"SAMPLE_SPACING": 1,
          "BURN_IN": 500,
          "seed": seed}
 
-iters = 100
+G = 100
 
-sample_mu, sample_sigma_square, sample_q = GibbsSampler2(y, iters, init, hypers)
-pd.Series(sample_mu[:,0]).plot()
-pd.Series(sample_mu[:,3]).plot()
+mu, sigma_square, q, mu_hat, B, n_for_estim_sigma, delta, n_for_estim_q = GibbsSampler_galaxies(y, G, init, hypers)
+pd.Series(mu[:,0]).plot()
+pd.Series(mu[:,2]).plot()
 
-sample_mu
+mu_star = np.array(mu).mean(axis=0)
+sigma_square_star = np.array(sigma_square).mean(axis=0)
+q_star = np.array(q).mean(axis=0)
+
+
+compute_marg_likelihood_and_NSE_galaxies(y, G, init, hypers)

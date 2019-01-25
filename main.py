@@ -7,7 +7,7 @@ Created on Sun Dec 23 16:09:55 2018
 
 import os
 
-os.chdir("C:/Users/robin/Documents/GitHub/bayesian-project")
+os.chdir("C:/Users/quent/Desktop/3A_ENSAE/Stats Bayesiennes/Projet/bayesian-project-add_example2")
 
 import pandas as pd
 import numpy as np
@@ -20,7 +20,7 @@ rnd = np.random.RandomState(seed)
 # Nodal Data 
 #======================================================================================
 
-
+"""
 ## Import data
 X = pd.read_csv('nodal.csv')
 del(X['Unnamed: 0'])
@@ -72,7 +72,7 @@ for i in MODELS :
 
     log_marg,NSE = compute_marg_likelihood_and_NSE(X_model, y, iters, init, hypers)
     RESULTS[i] = [log_marg,NSE]
-    
+ """
 #======================================================================================
 # Galaxies data 
 #======================================================================================
@@ -83,7 +83,7 @@ y = pd.read_csv('galaxies.csv')
 y = np.array(y).reshape(-1,1)
 y = y/1000 # Velocity/1000 as in the paper 
 
-d = 3
+d = 2
 init = {'d':d,'mu_params': np.array([20,100]), 'sigma_square_params': np.array([6,40]),
         'q_params': np.full(d,1), 'A':100}
 
@@ -95,6 +95,7 @@ hypers = {"SAMPLE_SPACING": 1,
 G = 100
 
 mu, sigma_square, q, mu_hat, B, n_for_estim_sigma, delta, n_for_estim_q = GibbsSampler_galaxies(y, G, init, hypers)
+
 pd.Series(mu[:,0]).plot()
 pd.Series(mu[:,2]).plot()
 
@@ -103,4 +104,4 @@ sigma_square_star = np.array(sigma_square).mean(axis=0)
 q_star = np.array(q).mean(axis=0)
 
 
-compute_marg_likelihood_and_NSE_galaxies(y, G, init, hypers)
+log_marg_likelihood, NSE = compute_marg_likelihood_and_NSE_galaxies(y, G, init, hypers)

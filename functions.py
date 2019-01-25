@@ -212,24 +212,30 @@ def compute_z_galaxies(q):
     z = np.where(draws==1)[1]
     return z, np.stack(draws)
 
+def compute_conditional_z(q,y,mu,sigma_square): #très mauvais, à améliorer
+    n = np.shape(y)[0]
+    d = np.shape(mu)[0]
+    z=np.empty(shape=(n))
+    i=np.empty(shape=(n,d))
+    for l in range(n):
+        temp = np.empty(shape=(d))
+        for j in range(d):
+            temp[j] = q[j]*multivariate_normal.pdf(y[l,0], mean=mu[j], cov=sigma_square[j])
+        temp[temp<0] = 0
+        temp=temp/np.sum(temp)
+        i[l,:] = multinomial.rvs(n=1, p=temp, size=1)[0]
+    z = np.where(i==1)[1]
+    return z, i
+        
+        
 
 def compute_B_galaxies(A, sigma_square, n,d):
-    B = np.reciprocal(np.full(d,A)+np.power(sigma_square,[-1]*d)*n)
+    B = np.reciprocal(np.full(d,1/A)+np.reciprocal(sigma_square)*n)
     return B
 
 
-def compute_n(z,d): # Can be improved
-    count = numpy.unique(z, return_counts=True)
-    if len(count[0])<d: # Sometimes some groups are empty need to fill with zeros.. 
-        n = []
-        for i in range(0,d):
-            if i in count[0]:
-                n.append(count[1][numpy.where(count[0]==i)][0])
-            else:
-                n.append(0)
-        return n
-    else:
-        return count[1]
+def compute_n(i):
+    return np.apply_along_axis(np.sum,0,i)
 
 
 def GibbsSampler_galaxies(y, iters, init, hypers, seed=None): 
@@ -255,83 +261,94 @@ def GibbsSampler_galaxies(y, iters, init, hypers, seed=None):
     rnd = np.random.RandomState(seed)
     mu, sigma_square, q = compute_prior_galaxies(mu_params, sigma_square_params,q_params,d)
     z, i = compute_z_galaxies(q) # Split in to functions ?
-    delta = np.diag(np.dot((y*i - np.multiply(i,mu)).T,(y*i - np.multiply(i,mu))))
-
+    delta = np.apply_along_axis(lambda x : np.sum(x**2), 0, (y*i - np.multiply(i,mu))) #idem
     # We wait untill BURN_IN updates before sampling 
     # Then we sample every SAMPLE_SPACING iterations and we sample d times more to evaluate by block (G*d)
     # As a result p*SAMPLE_SPACING + BURN_IN iterations are needed 
     total_iter = iters*SAMPLE_SPACING*d + BURN_IN 
 
-    sample_mu = [] # Will contain the sampled betas
-    sample_sigma_square = [] # Will contain the sampled beta_Zs 
-    sample_q = [] # Will contain the sampled beta_Zs 
+    sample_mu = []
     sample_mu_hat = []
     sample_B = []
-    sample_n_for_estim_sigma = []
+    
+    
+    Selected_indexes = [SAMPLE_SPACING*l+BURN_IN for l in range(iters)]
+    
+    for l in range(iters*SAMPLE_SPACING + BURN_IN):
+        
+        n = compute_n(i)
+        B = compute_B_galaxies(A, sigma_square, n,d)
+        
+        mu_hat = B*((1/A)*mu_params[0]+np.reciprocal(sigma_square)*np.apply_along_axis(np.sum,0,i*y))
+        mu = rnd.multivariate_normal(mean=mu_hat, cov=np.diag(B)) 
+                
+        sigma_square = invgamma.rvs(a=(sigma_square_params[0]+n)/2,scale=(sigma_square_params[1]+delta)/2)
+        
+        q = dirichlet.rvs(alpha=q_params+n, random_state=seed)[0]
+                
+        z,i = compute_conditional_z(q,y,mu,sigma_square)
+        delta = np.apply_along_axis(lambda x : np.sum(x**2), 0, (y*i - np.multiply(i,mu)))
+
+        sample_mu.append(copy.deepcopy(mu))
+        sample_mu_hat.append(copy.deepcopy(mu_hat))
+        sample_B.append(copy.deepcopy(B))
+    
+
+    sample_mu = np.array(sample_mu)[Selected_indexes]
+    sample_mu_hat = np.array(sample_mu_hat)[Selected_indexes]
+    sample_B = np.array(sample_B)[Selected_indexes]
+    
+    mu_star = np.array(sample_mu).mean(axis=0) # Take mu=mu*
+    # ESTIMER pi_hat(mu_star) mean pi(mu*|y,z_gibb,sigma_square_gibb)
+
+    
+    sample_sigma_square = []
     sample_delta = []
+    sample_n_for_estim_sigma = []
+
+    for l in range(iters*SAMPLE_SPACING + BURN_IN):
+        
+        n = compute_n(i)
+        B = compute_B_galaxies(A,sigma_square, n,d)
+        
+        sigma_square = invgamma.rvs(a=(sigma_square_params[0]+n)/2,scale=(sigma_square_params[1]+delta)/2)            
+        q = dirichlet.rvs(alpha=q_params+n, random_state=seed)[0]
+            
+        z,i = compute_conditional_z(q,y,mu_star,sigma_square)
+        delta = np.apply_along_axis(lambda x : np.sum(x**2), 0, (y*i - np.multiply(i,mu_star)))
+            
+        sample_sigma_square.append(copy.deepcopy(sigma_square))
+        sample_delta.append(copy.deepcopy(delta))
+        sample_n_for_estim_sigma.append(copy.deepcopy(n)) 
+    
+    
+    sample_sigma_square = np.array(sample_sigma_square)[Selected_indexes]
+    sample_delta = np.array(sample_delta)[Selected_indexes]
+    sample_n_for_estim_sigma = np.array(sample_n_for_estim_sigma)[Selected_indexes]
+            
+    sigma_square_star = np.array(sample_sigma_square).mean(axis=0)
+    
+    
+    sample_q = []
     sample_n_for_estim_q = []
-
-
-    iter_number =1
-    while iter_number<=total_iter:
-        while iter_number<=iters*SAMPLE_SPACING*2 + BURN_IN:
-            while iter_number<=iters*SAMPLE_SPACING*1 + BURN_IN:
-                n = compute_n(z,d)
-                B = compute_B_galaxies(A, sigma_square, n,d)
-                
-                mu_hat = B*(A*mu_params[0]+np.linalg.multi_dot([np.power(sigma_square,[-1]*d),i.T,y])) # Put a reciprocal
-                mu = rnd.multivariate_normal(mean=mu_hat, cov=np.diag(B)) 
-                
-                sigma_square = invgamma.rvs(a=(sigma_square_params[0]+n)/2,scale=(sigma_square_params[1]+delta)/2)
-                q = dirichlet.rvs(alpha=q_params+n, random_state=seed)[0]
-                
-                z,i = compute_z_galaxies(q*rnd.multivariate_normal(mean=mu, cov=np.diag(sigma_square))) # Pas sur pour la multiplication par la normale
-                delta = np.diag(np.dot((y*i - np.multiply(i,mu)).T,(y*i - np.multiply(i,mu))))
-
-                if (total_iter-iter_number)%SAMPLE_SPACING == 0 and iter_number>BURN_IN: 
-                    sample_mu.append(copy.deepcopy(mu))
-                    sample_mu_hat.append(copy.deepcopy(mu_hat))
-                    sample_B.append(copy.deepcopy(B))
-                    
-                iter_number+=1
-            
-            n = compute_n(z,d)
-            mu = np.array(sample_mu).mean(axis=0) # Take mu=mu*
-            
-            sigma_square = invgamma.rvs(a=(sigma_square_params[0]+n)/2,scale=(sigma_square_params[1]+delta)/2)            
-            q = dirichlet.rvs(alpha=q_params+n, random_state=seed)[0]
-            
-            z,i = compute_z_galaxies(q*rnd.multivariate_normal(mean=mu, cov=np.diag(sigma_square))) # Pas sur pour la multiplication par la normale
-            delta = np.diag(np.dot((y*i - np.multiply(i,mu)).T,(y*i - np.multiply(i,mu))))
-
-            if (total_iter-iter_number)%SAMPLE_SPACING == 0:
-                sample_sigma_square.append(copy.deepcopy(sigma_square))
-                sample_delta.append(copy.deepcopy(delta))
-                sample_n_for_estim_sigma.append(copy.deepcopy(n))
-
-                
-            iter_number+=1
+    
+    for l in range(iters*SAMPLE_SPACING + BURN_IN):
         
-        n = compute_n(z,d)
+        n = compute_n(i)
         
-        sigma_square = np.array(sample_sigma_square).mean(axis=0) # Take sigma_square= sigma_square*    
         q = dirichlet.rvs(alpha=q_params+n, random_state=seed)[0]
         
-        z,i = compute_z_galaxies(q*rnd.multivariate_normal(mean=mu, cov=np.diag(sigma_square))) # Pas sur pour la multiplication par la normale
-        delta = np.diag(np.dot((y*i - np.multiply(i,mu)).T,(y*i - np.multiply(i,mu))))
-
-        if (total_iter-iter_number)%SAMPLE_SPACING == 0:
-            sample_q.append(copy.deepcopy(q))
-            sample_n_for_estim_q.append(copy.deepcopy(n))
-
-        iter_number+=1
+        z,i = compute_conditional_z(q,y,mu_star,sigma_square_star)
+        delta = np.apply_along_axis(lambda x : np.sum(x**2), 0, (y*i - np.multiply(i,mu_star)))
         
-    if iters == 1: # If there is only one observation
-        # return the observation, not a list of one element
-        return sample_mu[0], sample_sigma_square[0], sample_q[0], sample_mu_hat[0], sample_B[0], \
-            sample_n_for_estim_sigma[0], sample_delta[0], sample_n_for_estim_q[0]
-    else:
-        return np.stack(sample_mu), np.stack(sample_sigma_square), np.stack(sample_q), \
+        sample_q.append(copy.deepcopy(q))
+        sample_n_for_estim_q.append(copy.deepcopy(n))
+    
+    sample_q = np.array(sample_q)[Selected_indexes]
+    sample_n_for_estim_q = np.array(sample_n_for_estim_q)[Selected_indexes]
+
+    
+    return np.stack(sample_mu), np.stack(sample_sigma_square), np.stack(sample_q), \
             np.stack(sample_mu_hat), np.stack(sample_B), np.stack(sample_n_for_estim_sigma),\
             np.stack(sample_delta), np.stack(sample_n_for_estim_q)
     
@@ -361,26 +378,50 @@ def compute_marg_likelihood_and_NSE_galaxies(y, iters, init, hypers):
     y_given_mu_and_sigma2_stars_pdf = np.stack([norm.pdf(x=y,loc=mu_star[i],scale=sigma_square_star[i]) for i in range(d)])[:,:,0].T
     log_like = np.log((q_star*y_given_mu_and_sigma2_stars_pdf).sum(axis=1)).sum()
 
+
+
     # Second term
     mu_prior = multivariate_normal.logpdf(x=mu_star, mean=mu_params[0], cov=mu_params[1]).sum() # Sum because of a the use of logpdf instead of pdf
-    sigma_square_prior = invgamma.logpdf(x=sigma_square_star,a=sigma_square_params[0], scale=np.sqrt(init['sigma_square_params'][1])).sum()
+    sigma_square_prior = invgamma.logpdf(x=sigma_square_star,a=sigma_square_params[0], scale=np.sqrt(sigma_square_params[1])).sum()
     q_square_prior = dirichlet.logpdf(x=q_star,alpha=q_params).sum()
     
     log_prior = mu_prior+sigma_square_prior+q_square_prior
 
     # Third term
     conditional_densities_mu = np.array([np.prod(multivariate_normal.pdf(x=mu_star, mean=mu_hat[i], cov=B[i])) for i in range(iters)])
+    
     conditional_densities_sigma = np.array([np.prod(invgamma.pdf(x=sigma_square_star, a=(sigma_square_params[0]+n_for_estim_sigma[i])/2,\
                                                          scale=(sigma_square_params[1]+delta[i])/2)) for i in range(iters)])
+    
     conditional_densities_q = np.array([dirichlet.pdf(x=q_star, alpha=q_params+n_for_estim_q[i]) for i in range(iters)])
 
     conditional_densities = conditional_densities_mu*conditional_densities_sigma*conditional_densities_q
-    log_posterior = np.log(conditional_densities.mean()) 
+    
+    log_posterior = np.log(conditional_densities.mean())
+    
+    
+    
+    
+    # Third term Quentin (idem ?)
+    densities_mu_star = [multivariate_normal.pdf(x=mu_star, mean=mu_hat[i], cov=B[i]) for i in range(iters)]
+    conditional_densities_mu = np.mean(np.array(densities_mu_star))
+    
+    densities_sigma_star = [np.prod(invgamma.pdf(x=sigma_square_star, a=(sigma_square_params[0]+n_for_estim_sigma[i])/2,scale=(sigma_square_params[1]+delta[i])/2)) for i in range(iters)]
+    conditional_densities_sigma = np.mean(np.array(densities_sigma_star))
+    
+    densities_q_star = [dirichlet.pdf(x=q_star/np.sum(q_star), alpha=q_params+n_for_estim_q[i]) for i in range(iters)]
+    conditional_densities_q = np.mean(np.array(densities_q_star))
+    
+    log_posterior_quentin = np.log(conditional_densities_mu*conditional_densities_sigma*conditional_densities_q)
 
-    # Marginal likelihood
+        
+    
     log_marg_likelihood = log_like + log_prior - log_posterior
+
+    
     #print(log_marg_likelihood)
     #Numerical Standard Error: Have to adapt the functions
-    NSE = np.sqrt(compute_var_h(conditional_densities,q=10)/(conditional_densities.mean()**2))
+    #NSE = np.sqrt(compute_var_h(conditional_densities,q=10)/(conditional_densities.mean()**2))
+    NSE = 0
     
     return log_marg_likelihood, NSE

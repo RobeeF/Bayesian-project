@@ -7,31 +7,30 @@ Created on Tue Dec 18 17:03:26 2018
 
 import numpy as np
 import numpy.linalg
-import os 
 import copy
 from scipy.stats import multivariate_normal, invgamma, dirichlet, multinomial, norm
-import pandas as pd
 import statsmodels.discrete.discrete_model as sm
-from collections import OrderedDict
+from scipy.spatial.distance import cdist
+
 
 def compute_beta_prior(mean, cov, seed=None):
     ''' Generate draws from the multivariate normal prior 
-    mean: (array-like) Mean of the multivariate prior
-    cov: (ndarray) Covariance of the multivariate prior
+    mean (array-like): Mean of the multivariate prior
+    cov (ndarray): Covariance of the multivariate prior
     
-    returns: (array-like) the draws from the prior
+    returns (array-like): the draws from the prior
     '''
     rnd = np.random.RandomState(seed)
     return rnd.multivariate_normal(mean=mean, cov=cov)
 
 def compute_z(beta, X, y,seed=None):
     ''' Simulate z_i the hidden variables of the model from a multivariate gaussian distribution
-    beta: (array-like) the coefficients estimated from the probit model
-    X: (ndarray) exogeneous variables of the model
-    y: (ndarray) endogeneous variable of the model
-    seed: (int) random seed of the model to have reproducible results
+    beta (array-like): the coefficients estimated from the probit model
+    X (ndarray): exogeneous variables of the model
+    y (ndarray): endogeneous variable of the model
+    seed (int): random seed of the model to have reproducible results
 
-    returns: (array-like) the draws of z_i simulated in the Gibbs Sampler
+    returns (array-like): the draws of z_i simulated in the Gibbs Sampler
     '''
     
     rnd = np.random.RandomState(seed)
@@ -48,11 +47,11 @@ def compute_z(beta, X, y,seed=None):
 
 def compute_beta_z(z,X,A,a):
     ''' Simulate beta_z from the draws of hidden variables z_i 
-    z: (array-like) hidden variables of the model
-    X: (ndarray) exogeneous variables of the model
-    y: (ndarray) endogeneous variable of the model
-    A: (ndarray) Variance-covariance matrix of the multivariate prior pdf
-    a: (array-like) mean of the multivariate prior pdf
+    z (array-like): hidden variables of the model
+    X (ndarray): exogeneous variables of the model
+    y (ndarray): endogeneous variable of the model
+    A (ndarray): Variance-covariance matrix of the multivariate prior pdf
+    a (array-like): mean of the multivariate prior pdf
     
     returns: (array-like) the beta_z simulated in the Gibbs Sampler
     '''
@@ -61,10 +60,10 @@ def compute_beta_z(z,X,A,a):
     
 def compute_B(A,X): # Cheucheu peut-être
     ''' Compute the variance-covariance matrix of the posterior 
-    A: (ndarray) Covariance of the prior
-    X: (ndarray) Exogeneous variables of the model
+    A (ndarray): Covariance of the prior
+    X (ndarray): Exogeneous variables of the model
     
-    returns: (ndarray) Cov-Var matrix of the posterior 
+    returns (ndarray): Cov-Var matrix of the posterior 
     '''
     return np.linalg.inv(A + np.dot(X.T,X))
 
@@ -72,10 +71,10 @@ def compute_Omega(s,h):
     ''' Compute Omega_s (from part 3 of the article)
     Warning : This computation works only in the 2.1.1 case
     
-    s: (integer) parameter of Omega
-    h: (array-like) Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
+    s (integer): parameter of Omega
+    h (array-like): Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
     
-    returns : (float because we are in case 2.1.1)  Coefficient Omega used to compute NSE
+    returns (float because we are in case 2.1.1):  Coefficient Omega used to compute NSE
     '''
     h_hat = h.mean()
     G = np.shape(h)[0]
@@ -85,8 +84,8 @@ def compute_Omega(s,h):
 
 def compute_var_h(h,q=10):
     ''' Compute var(h) as in last formule of p.4 right column (for case 2.1.1)
-    h: (array-like) Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
-    q: (integer) parameter q=10 by default (as suggered in the article)
+    h (array-like): Conditional densities as defined in 3. pi(Beta*|y,z^g)_g
+    q (integer): parameter q=10 by default (as suggered in the article)
     
     returns (float because we are in case 2.1.1) var(h_hat)
     '''
@@ -99,11 +98,11 @@ def compute_var_h(h,q=10):
   
 def GibbsSampler(X, y, iters, init, hypers, seed=None): 
     ''' Gibbs sampler applied to the nodal set from  Chib (1995).
-    X: (ndarray) exogeneous variables
-    y : (array-like) endogeneous variables
-    iters: (int) length of the MCMC
-    init: (array-like) initialisation parameters
-    hypers: (array-like) hyper-parameters
+    X (ndarray): exogeneous variables
+    y (array-like): endogeneous variables
+    iters (int): length of the MCMC
+    init (dict): initialisation parameters
+    hypers (array-like): hyper-parameters
     
     returns: (tuple) the simulated beta chain (array-like), the b_z chain (array-like) as a by product and B the covariance matrix of the posterior (ndarray)
     '''
@@ -151,13 +150,13 @@ def GibbsSampler(X, y, iters, init, hypers, seed=None):
     
 def compute_marg_likelihood_and_NSE(X, y, iters, init, hypers):
     ''' Compute the marginal likelihood from the Gibbs Sampler output according to Chib (1995)
-    X: (ndarray) exogeneous variables
-    y : (array-like) endogeneous variables
-    iters: (int) length of the MCMC
-    init: (array-like) initialisation parameters
-    hypers: (array-like) hyper-parameters
+    X (ndarray): exogeneous variables
+    y (array-like): endogeneous variables
+    iters (int): length of the MCMC
+    init (dict): initialisation parameters
+    hypers (array-like): hyper-parameters
     
-    returns: (float) the marginal likelihood/normalizing constant 
+    returns (float): the marginal likelihood/normalizing constant 
     '''
     
     # Initialisation
@@ -205,10 +204,10 @@ def compute_prior_galaxies(mu_params, sigma_params,q_params, d, seed=None):
     
     return mu, sigma_square, q
 
-def compute_z_galaxies(q):
+def compute_z_galaxies(q,N):
     q[q < 0] = 0 # Quick fix: sometimes the number returned by the gaussian is negative and then the code crashes
     p = q/q.sum()
-    draws = multinomial.rvs(n=1, p=p, size=82) # 82 hardcoded
+    draws = multinomial.rvs(n=1, p=p, size=N) # 82 hardcoded
     z = np.where(draws==1)[1]
     return z, np.stack(draws)
 
@@ -240,18 +239,20 @@ def compute_n(i):
 
 def GibbsSampler_galaxies(y, iters, init, hypers, seed=None): 
     ''' Gibbs sampler applied to the nodal set from  Chib (1995).
-    y : (array-like) endogeneous variables
-    iters: (int) length of the MCMC
-    init: (array-like) initialisation parameters
-    hypers: (array-like) hyper-parameters
+    y (array-like): endogeneous variables
+    iters (int): length of the MCMC
+    init (dict): initialisation parameters
+    hypers (array-like): hyper-parameters
     
     returns: (tuple) the simulated beta chain (array-like), the b_z chain (array-like) as a by product and B the covariance matrix of the posterior (ndarray)
     '''
     
     # Initialisation
-    A,d =  init['A'], init['d']
+    d =  init['d']
+    N=len(y)
 
     mu_params, sigma_square_params, q_params = init['mu_params'], init['sigma_square_params'], init['q_params']
+    A = mu_params[1]
     
     # Hyper-parameters
     BURN_IN = hypers['BURN_IN']
@@ -260,12 +261,8 @@ def GibbsSampler_galaxies(y, iters, init, hypers, seed=None):
 
     rnd = np.random.RandomState(seed)
     mu, sigma_square, q = compute_prior_galaxies(mu_params, sigma_square_params,q_params,d)
-    z, i = compute_z_galaxies(q) # Split in to functions ?
-    delta = np.apply_along_axis(lambda x : np.sum(x**2), 0, (y*i - np.multiply(i,mu))) #idem
-    # We wait untill BURN_IN updates before sampling 
-    # Then we sample every SAMPLE_SPACING iterations and we sample d times more to evaluate by block (G*d)
-    # As a result p*SAMPLE_SPACING + BURN_IN iterations are needed 
-    total_iter = iters*SAMPLE_SPACING*d + BURN_IN 
+    z, i = compute_z_galaxies(q,N) 
+    delta = np.apply_along_axis(lambda x : np.sum(x**2), 0, (y*i - np.multiply(i,mu))) 
 
     sample_mu = []
     sample_mu_hat = []
@@ -273,7 +270,7 @@ def GibbsSampler_galaxies(y, iters, init, hypers, seed=None):
     
     
     Selected_indexes = [SAMPLE_SPACING*l+BURN_IN for l in range(iters)]
-    
+    print('mu_hat')
     for l in range(iters*SAMPLE_SPACING + BURN_IN):
         
         n = compute_n(i)
@@ -305,8 +302,10 @@ def GibbsSampler_galaxies(y, iters, init, hypers, seed=None):
     sample_sigma_square = []
     sample_delta = []
     sample_n_for_estim_sigma = []
+    print('sigma')
+    Selected_indexes = [SAMPLE_SPACING*l for l in range(iters)] # No burn-in for the other params
 
-    for l in range(iters*SAMPLE_SPACING + BURN_IN):
+    for l in range(iters*SAMPLE_SPACING):
         
         n = compute_n(i)
         B = compute_B_galaxies(A,sigma_square, n,d)
@@ -331,8 +330,8 @@ def GibbsSampler_galaxies(y, iters, init, hypers, seed=None):
     
     sample_q = []
     sample_n_for_estim_q = []
-    
-    for l in range(iters*SAMPLE_SPACING + BURN_IN):
+    print('q')
+    for l in range(iters*SAMPLE_SPACING): # On enlève le burn-in
         
         n = compute_n(i)
         
@@ -425,3 +424,54 @@ def compute_marg_likelihood_and_NSE_galaxies(y, iters, init, hypers):
     NSE = 0
     
     return log_marg_likelihood, NSE
+
+
+#======================================================================================
+# Synthetic data simulation
+#======================================================================================
+def simul_gaussian_mixture(mean, cov, N):
+    ''' Simulate a gaussian mixture of means "mean", covariance "cov" and of size n. 
+    The number of gaussian in the mixture is implicit and given by the shape of mu/cov
+    mean (array-like): The means of the gaussians in the mixture
+    cov (ndarray): The (diagonal) covariance matrix of the gaussians 
+        (a multivariate gaussian is used rather than d univariate gaussians)
+    N: The size of the sample to generate
+    -------------------------------------------------------------------------------------
+    returns (array-like): The sample generated by the mixture 
+    '''
+    p = len(mean)
+    y = multivariate_normal.rvs(mean=mean, cov=cov, size=int(N/p))
+    return np.hstack(y)
+
+
+def distance_to_true_params_value(G, mu, sigma_square, true_mu_value, true_sigma_value):
+    ''' Compute the distance between the true parameters of each gaussian and the estimates of these parameters.
+    The parameters are first sorted by mu values in order to compare the estimates closest to the true values of each gaussian
+    G: The number of iterations of the Gibbs sampler for each parameter
+    mu (ndarray): The estimates of the means of the gaussians at each iteration
+    sigma_square (ndarray): The estimates of the variance of the gaussians at each iteration
+    true_mu_value (array-like): The actual means of the gaussians
+    true_sigma_value (array-like): The actual variance of the gaussians
+    ------------------------------------------------------------------------------------
+    returns (array-like,array-like): The euclidian distance between the estimates and the true values of the means and the variances at each iteration
+    '''
+    mu_trajectory = mu.cumsum(axis=0)/np.arange(1, len(mu)+1).reshape(-1,1)
+    sigma_square_trajectory = sigma_square.cumsum(axis=0)/np.arange(1, len(sigma_square)+1).reshape(-1,1)
+
+    mu_sorted_trajectory = [] # For each iteration sort the (mu, sigma) components found by mu values
+    sigma_square_sorted_trajectory = []
+
+    for i in range(G): # Could be cleaner with a apply along axis
+        mu_st, ss_st = (list(t) for t in zip(*sorted(zip(mu_trajectory[i], sigma_square_trajectory[i]))))
+        mu_sorted_trajectory.append(mu_st)
+        sigma_square_sorted_trajectory.append(ss_st)
+    
+    true_mu_value, true_sigma_value = (list(t) for t in zip(*sorted(zip(true_mu_value, true_sigma_value))))
+
+    # Compute the distance between the true value and the estimate at each iteration
+    mu_dist = cdist(mu_sorted_trajectory, [true_mu_value]).reshape(-1,)
+    sigma_square_dist = cdist(sigma_square_sorted_trajectory, [true_sigma_value]).reshape(-1,)
+    
+    return mu_dist, sigma_square_dist
+
+        

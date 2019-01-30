@@ -7,7 +7,10 @@ Created on Sun Dec 23 16:09:55 2018
 
 import os
 
-os.chdir("C:/Users/robin/Documents/GitHub/bayesian-project")
+path_q = "C:/Users/quent/Desktop/3A_ENSAE/Stats Bayesiennes/Projet/bayesian-project-add_example2/bayesian-project-add_example2"
+path_r = "C:/Users/robin/Documents/GitHub/bayesian-project"
+
+os.chdir(path_r)
 
 import pandas as pd
 import numpy as np
@@ -18,11 +21,12 @@ from copy import deepcopy
 seed = 1712
 rnd = np.random.RandomState(seed)
 
+"""
 #======================================================================================
 # Nodal Data 
 #======================================================================================
 
-"""
+
 ## Import data
 X = pd.read_csv('nodal.csv')
 del(X['Unnamed: 0'])
@@ -74,14 +78,15 @@ for i in MODELS :
 
     log_marg,NSE = compute_marg_likelihood_and_NSE(X_model, y, iters, init, hypers)
     RESULTS[i] = [log_marg,NSE]
- """
+"""
+
 #======================================================================================
 # Galaxies data 
 #======================================================================================
 from functions import *
 from scipy.stats import multivariate_normal, norm, invgamma, dirichlet
 
-y = pd.read_csv('galaxies.csv')
+y = pd.read_csv('gaussian_mixture_gibbs/galaxies.csv')
 y = np.array(y).reshape(-1,1)
 y = y/1000 # Velocity/1000 as in the paper 
 
@@ -111,17 +116,27 @@ log_marg_likelihood, NSE = compute_marg_likelihood_and_NSE_galaxies(y, G, init, 
 
 ### Evaluate the likelihood and the numerical standard error
 RESULTS = []
-for d in range(1,6): # Evaluate the model for 1,2,3,4 or 5 components
+for d in range(2,6): # Evaluate the model for 1,2,3,4 or 5 components
     init['d'] = d
     init['q_params'] = np.full(d,1)
     log_marg,NSE = compute_marg_likelihood_and_NSE_galaxies(y, G, init, hypers)
-    RESULTS[d] = [log_marg,NSE]
+    RESULTS.append([log_marg,NSE])
 
 
 # Graph for the chosen model (out of the 5 runned above)
+#Il y a un problème ici :
 sample = deepcopy(y)
 sample.sort()
 x = np.linspace(-3,60,10000)
+
+d = 3
+init['d'] = d
+
+mu, sigma_square, q, mu_hat, B, n_for_estim_sigma, delta, n_for_estim_q = GibbsSampler_galaxies(y, G, init, hypers)
+
+mu_star = np.array(mu).mean(axis=0)
+sigma_square_star = np.array(sigma_square).mean(axis=0)
+q_star = np.array(q).mean(axis=0)
 
 for i in range(d):
     gaussian_pdf = norm.pdf(x, loc=mu_star[i], scale=sigma_square_star[i])    # for example
@@ -130,7 +145,7 @@ plt.plot(sample,np.full(82,0), 'r^') # Could compute which point belongs to whic
 
 plt.show()
 
-#======================================================================================
+"""#======================================================================================
 # Synthetic data 
 #======================================================================================
 from functions import *
@@ -169,4 +184,4 @@ pd.Series(sigma_square[:,1]).plot()
 # Test distance to true parameters
 mu_dist, sigma_dist = distance_to_true_params_value(G, mu, sigma_square, mean, sigma_square_param)
 pd.Series(mu_dist).plot()
-pd.Series(sigma_dist).plot()
+pd.Series(sigma_dist).plot()"""

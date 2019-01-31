@@ -16,10 +16,10 @@ from scipy.spatial.distance import cdist
 
 def compute_prior_galaxies(mu_params, sigma_params,q_params, d, seed=None):
     ''' Generate draws from the multivariate normal prior 
-    mean (array-like): Mean of the multivariate prior
-    cov (ndarray): Covariance of the multivariate prior
+    mean: (array-like) Mean of the multivariate prior
+    cov: (ndarray) Covariance of the multivariate prior
     
-    returns (array-like): the draws from the prior
+    returns: (array-like) the draws from the prior
     '''
     rnd = np.random.RandomState(seed)
     mu =rnd.normal(loc=mu_params[0], scale=np.sqrt(mu_params[1]), size=d)
@@ -31,11 +31,11 @@ def compute_prior_galaxies(mu_params, sigma_params,q_params, d, seed=None):
 def compute_z_galaxies(q,N):
     q[q < 0] = 0 # Quick fix: sometimes the number returned by the gaussian is negative and then the code crashes
     p = q/q.sum()
-    draws = multinomial.rvs(n=1, p=p, size=N) # 82 hardcoded
+    draws = multinomial.rvs(n=1, p=p, size=N)
     z = np.where(draws==1)[1]
     return z, np.stack(draws)
 
-def compute_conditional_z(q,y,mu,sigma_square): #très mauvais, à améliorer
+def compute_conditional_z(q,y,mu,sigma_square): #Could be optimised in future work
     n = np.shape(y)[0]
     d = np.shape(mu)[0]
     z=np.empty(shape=(n))
@@ -61,7 +61,34 @@ def compute_n(i):
     return np.apply_along_axis(np.sum,0,i)
 
 
-def GibbsSampler_galaxies(y, iters, init, hypers, seed=None): 
+def compute_Omega(h,h_hat,s):
+    
+    n = np.shape(h_hat)[0]
+    G = np.shape(h)[1]
+    
+    temp = (h-h_hat.reshape(-1,1))
+    Omega = np.zeros((n,n))
+
+    for i in range(G):
+        if i>=s:
+            Omega += np.dot(temp[:,i].reshape(-1,1),temp[:,i].reshape(1,-1))
+
+    return Omega/G
+
+def compute_var_h_hat(h,h_hat,q=10):
+    
+    G = np.shape(h)[1]
+    
+    var = compute_Omega(h,h_hat,0)
+    
+    for i in range(1,q+1):
+        Omega_s = compute_Omega(h,h_hat,i)
+        var += (1-i/(q+1))*(Omega_s+Omega_s.T)
+    
+    return var/G
+
+
+def GibbsSampler_galaxies(y, iters, init, hypers, seed=None):
     ''' Gibbs sampler applied to the nodal set from  Chib (1995).
     y (array-like): endogeneous variables
     iters (int): length of the MCMC
@@ -174,7 +201,7 @@ def GibbsSampler_galaxies(y, iters, init, hypers, seed=None):
     return np.stack(sample_mu), np.stack(sample_sigma_square), np.stack(sample_q), \
             np.stack(sample_mu_hat), np.stack(sample_B), np.stack(sample_n_for_estim_sigma),\
             np.stack(sample_delta), np.stack(sample_n_for_estim_q)
-    
+        
     
 def compute_marg_likelihood_and_NSE_galaxies(y, iters, init, hypers):
     ''' Compute the marginal likelihood from the Gibbs Sampler output according to Chib (1995)
@@ -218,34 +245,27 @@ def compute_marg_likelihood_and_NSE_galaxies(y, iters, init, hypers):
     
     conditional_densities_q = np.array([dirichlet.pdf(x=q_star, alpha=q_params+n_for_estim_q[i]) for i in range(iters)])
 
+    
     conditional_densities = conditional_densities_mu*conditional_densities_sigma*conditional_densities_q
     
-    log_posterior = np.log(conditional_densities.mean())
-    
-    
-    
-    
-    # Third term Quentin (idem ?)
-    densities_mu_star = [multivariate_normal.pdf(x=mu_star, mean=mu_hat[i], cov=B[i]) for i in range(iters)]
-    conditional_densities_mu = np.mean(np.array(densities_mu_star))
-    
-    densities_sigma_star = [np.prod(invgamma.pdf(x=sigma_square_star, a=(sigma_square_params[0]+n_for_estim_sigma[i])/2,scale=(sigma_square_params[1]+delta[i])/2)) for i in range(iters)]
-    conditional_densities_sigma = np.mean(np.array(densities_sigma_star))
-    
-    densities_q_star = [dirichlet.pdf(x=q_star/np.sum(q_star), alpha=q_params+n_for_estim_q[i]) for i in range(iters)]
-    conditional_densities_q = np.mean(np.array(densities_q_star))
-    
-    log_posterior_quentin = np.log(conditional_densities_mu*conditional_densities_sigma*conditional_densities_q)
-
-        
+    log_posterior = np.log(conditional_densities.mean())        
     
     log_marg_likelihood = log_like + log_prior - log_posterior
 
     
-    #print(log_marg_likelihood)
-    #Numerical Standard Error: Have to adapt the functions
-    #NSE = np.sqrt(compute_var_h(conditional_densities,q=10)/(conditional_densities.mean()**2))
-    NSE = 0
+    #Numerical Standard Error Computation
+    h = np.array([conditional_densities_mu,
+                  conditional_densities_sigma,
+                  conditional_densities_q])
+    
+    h_hat = np.array([np.mean(conditional_densities_mu),
+                  np.mean(conditional_densities_sigma),
+                  np.mean(conditional_densities_q)])
+    
+    var = compute_var_h_hat(h,h_hat)
+    
+    NSE = np.dot(np.dot((1/h_hat).reshape(1,-1),var),(1/h_hat).reshape(-1,1))[0,0]
+    
     
     return log_marg_likelihood, NSE
 

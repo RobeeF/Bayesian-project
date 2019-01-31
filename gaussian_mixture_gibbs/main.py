@@ -25,15 +25,31 @@ y = np.array(y).reshape(-1,1)
 y = y/1000 # Velocity/1000 as in the paper 
 
 d = 3
+
 init = {'d':d,'mu_params': np.array([20,100]), 'sigma_square_params': np.array([6,40]),
         'q_params': np.full(d,1)}
 
 # Specify hyper parameters
-hypers = {"SAMPLE_SPACING": 1,
+hypers = {"SAMPLE_SPACING": 3, 
          "BURN_IN": 500,
          "seed": None}
 
-G = 100
+G = 5000 
+
+
+# Evaluate the likelihood and the numerical standard error
+RESULTS = dict()
+for d in range(2,6): # Evaluate the model for 1,2,3,4 or 5 components
+    print('Model with ', d, ' components')
+    init['d'] = d
+    init['q_params'] = np.full(d,1)
+    log_marg,NSE = compute_marg_likelihood_and_NSE_galaxies(y, G, init, hypers)
+    RESULTS[d] = [log_marg,NSE]
+   
+# The best model seems to be the model with 3 components:    
+d = 3
+init = {'d':d,'mu_params': np.array([20,100]), 'sigma_square_params': np.array([6,40]),
+        'q_params': np.full(d,1)}
 
 # Run the sampler
 mu, sigma_square, q, mu_hat, B, n_for_estim_sigma, delta, n_for_estim_q = GibbsSampler_galaxies(y, G, init, hypers)
@@ -41,23 +57,12 @@ mu, sigma_square, q, mu_hat, B, n_for_estim_sigma, delta, n_for_estim_q = GibbsS
 pd.Series(mu[:,0]).plot()
 pd.Series(sigma_square[:,1]).plot()
 
+# Compute theta^{*}
 mu_star = np.array(mu).mean(axis=0)
 sigma_square_star = np.array(sigma_square).mean(axis=0)
 q_star = np.array(q).mean(axis=0)
 
-# The following output is erroneous. Function to finish
-log_marg_likelihood, NSE = compute_marg_likelihood_and_NSE_galaxies(y, G, init, hypers)
-
-# Evaluate the likelihood and the numerical standard error
-RESULTS = dict()
-for d in range(1,6): # Evaluate the model for 1,2,3,4 or 5 components
-    init['d'] = d
-    init['q_params'] = np.full(d,1)
-    log_marg,NSE = compute_marg_likelihood_and_NSE_galaxies(y, G, init, hypers)
-    RESULTS[d] = [log_marg,NSE]
-
-
-# Graph for the chosen model (out of the 5 runned above)
+# Plot the results
 sample = deepcopy(y)
 sample.sort()
 x = np.linspace(-3,60,10000)
@@ -69,42 +74,48 @@ plt.plot(sample,np.full(82,0), 'r^') # Could compute which point belongs to whic
 
 plt.show()
 
+
 #======================================================================================
 # Synthetic data 
 #======================================================================================
 
-n = 500 # A bigger sample size is chosen to have more precise results
-mean = [5,12]
-sigma_square_param = [0.5, 0.5]
+n = 300 # The biggest the sample size the more precise the results
+mean = [2, 8, 15]
+sigma_square_param = [2, 2, 2]
 cov = np.diag(sigma_square_param)
 y = simul_gaussian_mixture(mean, cov, n)
 y = np.array(y).reshape(-1,1)
 
-d = 2
+sample = deepcopy(y)
+sample.sort()
+plt.plot(sample,np.full(n,0), 'r^') # Could compute which point belongs to which gaussian and print them in the gaussian colors
+
+d = 3
 init = {'d':d,'mu_params': np.array([10,50]), 'sigma_square_params': np.array([6,60]),
         'q_params': np.full(d,1)}
 
 # specify hyper parameters
-hypers = {"SAMPLE_SPACING": 3,
+hypers = {"SAMPLE_SPACING": 4,
          "BURN_IN": 500, 
          'seed':None}
 
-G = 500
+G = 1500
 
 # Run the sampler
 mu, sigma_square, q, mu_hat, B, n_for_estim_sigma, delta, n_for_estim_q = GibbsSampler_galaxies(y, G, init, hypers)
 
-# Compute Theta*
+# Compute Theta* as the MAP
 mu_star = np.array(mu).mean(axis=0)
 sigma_square_star = np.array(sigma_square).mean(axis=0)
 q_star = np.array(q).mean(axis=0)
 
 # Plot the chain for the first and the second gaussian
 pd.Series(mu[:,0]).plot()
-pd.Series(mu[:,1]).plot()
-
 pd.Series(sigma_square[:,0]).plot()
-pd.Series(sigma_square[:,1]).plot()
+
+# Plot the density for the first gaussian (mu and sigma)
+pd.Series(mu[:,0]).plot('kde')
+pd.Series(sigma_square[:,0]).plot('kde')
 
 # Compute the sequence of distances between estimated and true parameters at each iteration
 mu_dist, sigma_dist = distance_to_true_params_value(G, mu, sigma_square, mean, sigma_square_param)

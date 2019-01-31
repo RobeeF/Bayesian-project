@@ -7,16 +7,20 @@ Created on Sun Dec 23 16:09:55 2018
 
 import os
 
-os.chdir("C:/Users/quent/Desktop/3A_ENSAE/Stats Bayesiennes/Projet/bayesian-project-master")
+os.chdir("C:/Users/robin/Documents/GitHub/bayesian-project/probit_gibbs")
 
 import pandas as pd
 import numpy as np
 from functions import *
+import matplotlib.pyplot as plt
+from copy import deepcopy
 
-seed = 1712
-rnd = np.random.RandomState(seed)
 
-## Import data
+#======================================================================================
+# Nodal Data 
+#======================================================================================
+
+# Import data
 X = pd.read_csv('nodal.csv')
 del(X['Unnamed: 0'])
 del(X['id'])
@@ -24,14 +28,14 @@ y = X.iloc[:,0].values
 X = X.iloc[:,1:].values
 n = X.shape[0]
 
-## specify hyper parameters
+# specify hyper parameters
 hypers = {"SAMPLE_SPACING": 1,
          "BURN_IN": 500,
-         "seed": seed}
+         "seed": None}
 iters = 5000
 
 
-## Paper's Models (corresponding columns to keep)
+# Paper Models (corresponding columns to keep)
 MODELS = {"M1" : [],
           "M2" : [0],
           "M3" : [1],
@@ -43,16 +47,16 @@ MODELS = {"M1" : [],
           "M9" : [1,2,3,4]
         }
 
-## log scale of x2
+# log scale of x2
 X[:,1]=np.log(X[:,1])
 
 
-## Run the Gibbs Sampler (for all the models) 
-## and compute the marginal log_likelihood and the numerical standard error
+# Run the Gibbs Sampler (for all the models) 
+# and compute the marginal log_likelihood and the numerical standard error
 RESULTS = dict()
 
 for i in MODELS :
-
+    print(i)
     #Select the variables
     C = np.full((n,1),1)
     X_model = np.concatenate((C,X[:,MODELS[i]]), axis = 1)
